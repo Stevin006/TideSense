@@ -121,7 +121,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
 
   return (
     <Container edges={['top', 'left', 'right']}>
-      <ScrollContent showsVerticalScrollIndicator={false}>
+      <ScrollContent contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
         <AnimatedCard
           style={{
             opacity: fadeAnim,
@@ -191,14 +191,16 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
       </ScrollContent>
 
       <Actions>
-        <PrimaryButton onPress={handleScanAgain}>
-          <PrimaryButtonLabel>Scan Again</PrimaryButtonLabel>
-        </PrimaryButton>
-        {result.status === 'UNSAFE' && (
-          <SecondaryButton onPress={handleShareAlert}>
-            <SecondaryButtonLabel>Share Alert</SecondaryButtonLabel>
-          </SecondaryButton>
-        )}
+        <ActionRow>
+          <PrimaryButton onPress={handleScanAgain} activeOpacity={0.85}>
+            <PrimaryButtonLabel>Scan Again</PrimaryButtonLabel>
+          </PrimaryButton>
+          {result.status === 'UNSAFE' && (
+            <SecondaryButton onPress={handleShareAlert} activeOpacity={0.85}>
+              <SecondaryButtonLabel>Share Alert</SecondaryButtonLabel>
+            </SecondaryButton>
+          )}
+        </ActionRow>
       </Actions>
     </Container>
   );
@@ -226,8 +228,14 @@ const AnimatedCard = styled(Animated.View)<ThemeProps>`
   border-radius: ${themed((theme) => `${theme.radii.lg}px`)};
   padding: ${themed((theme) => `${theme.spacing(4)}px`)};
   margin-bottom: ${themed((theme) => `${theme.spacing(3)}px`)};
+  /* soft outline + shadow for a calm, tactile card */
   border-width: 1px;
   border-color: ${themed((theme) => theme.colors.divider)};
+  shadow-color: #000;
+  shadow-opacity: 0.06;
+  shadow-radius: 10px;
+  shadow-offset: 0px 6px;
+  elevation: 3;
 `;
 
 const StatusRow = styled.View<ThemeProps>`
@@ -258,27 +266,34 @@ const ProbabilityText = styled.Text<ThemeProps>`
 `;
 
 const IconWrapper = styled.View<ThemeProps & { color: string }>`
-  width: 98px;
-  height: 98px;
-  border-radius: ${themed((theme) => `${theme.radii.pill}px`)};
+  width: 88px;
+  height: 88px;
+  border-radius: 44px;
   background-color: ${({ color }: { color: string }) => color};
   align-self: center;
   align-items: center;
   justify-content: center;
-  margin-vertical: ${themed((theme) => `${theme.spacing(4)}px`)};
+  margin-vertical: ${themed((theme) => `${theme.spacing(3)}px`)};
+  border-width: 1px;
+  border-color: rgba(255,255,255,0.06);
+  shadow-color: #000;
+  shadow-opacity: 0.08;
+  shadow-radius: 8px;
+  shadow-offset: 0px 4px;
+  elevation: 2;
 `;
 
 const Headline = styled.Text<ThemeProps>`
   color: ${themed((theme) => theme.colors.textPrimary)};
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   text-align: center;
-  line-height: 34px;
+  line-height: 30px;
 `;
 
 const Subtext = styled.Text<ThemeProps>`
   color: ${themed((theme) => theme.colors.textSecondary)};
-  font-size: 16px;
+  font-size: 15px;
   text-align: center;
   margin-top: ${themed((theme) => `${theme.spacing(2)}px`)};
   line-height: 24px;
@@ -310,6 +325,11 @@ const InfoCard = styled.View<ThemeProps>`
   margin-bottom: ${themed((theme) => `${theme.spacing(2)}px`)};
   border-width: 1px;
   border-color: ${themed((theme) => theme.colors.divider)};
+  shadow-color: #000;
+  shadow-opacity: 0.04;
+  shadow-radius: 8px;
+  shadow-offset: 0px 4px;
+  elevation: 1;
 `;
 
 const CardTitle = styled.Text<ThemeProps>`
@@ -370,8 +390,15 @@ const RecommendationText = styled.Text<ThemeProps>`
 `;
 
 const Actions = styled.View<ThemeProps>`
+  padding: ${themed((theme) => `${theme.spacing(2)}px 0`)};
+  margin-top: ${themed((theme) => `${theme.spacing(1)}px`)};
+`;
+
+const ActionRow = styled.View<ThemeProps>`
+  flex-direction: row;
   gap: ${themed((theme) => `${theme.spacing(2)}px`)};
-  margin-top: ${themed((theme) => `${theme.spacing(2)}px`)};
+  justify-content: space-between;
+  align-items: center;
 `;
 
 const buttonBase = css`
@@ -386,6 +413,11 @@ const buttonBase = css`
 const PrimaryButton = styled.TouchableOpacity<ThemeProps>`
   ${buttonBase}
   background-color: ${themed((theme) => theme.colors.primary)};
+  shadow-color: #000;
+  shadow-opacity: 0.12;
+  shadow-radius: 12px;
+  shadow-offset: 0px 8px;
+  elevation: 4;
 `;
 
 const PrimaryButtonLabel = styled.Text<ThemeProps>`
@@ -397,8 +429,9 @@ const PrimaryButtonLabel = styled.Text<ThemeProps>`
 const SecondaryButton = styled.TouchableOpacity<ThemeProps>`
   ${buttonBase}
   border-width: 1px;
-  border-color: ${themed((theme) => theme.colors.warning)};
+  border-color: ${themed((theme) => theme.colors.divider)};
   background-color: transparent;
+  min-width: 140px;
 `;
 
 const SecondaryButtonLabel = styled.Text<ThemeProps>`

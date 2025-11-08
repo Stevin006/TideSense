@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform } from 'react-native';
+import { ActivityIndicator, Platform, Animated } from 'react-native';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -19,6 +19,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const detectionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressAnim = useRef(new Animated.Value(1)).current;
 
   const [riskLevel, setRiskLevel] = useState<'low' | 'moderate' | 'high' | 'unknown'>('unknown');
   const [isRiskLoading, setIsRiskLoading] = useState(true);
@@ -55,6 +56,15 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
       setIsDetecting(false);
       navigation.navigate('Results', { result });
     }, 2200 + Math.random() * 600);
+  };
+
+  const animatePress = (toValue: number) => {
+    Animated.spring(pressAnim, {
+      toValue,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 150,
+    }).start();
   };
 
   useEffect(() => {
@@ -146,7 +156,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
             facing="back"
           />
           <Overlay
-            colors={['rgba(2, 30, 47, 0.15)', 'rgba(2, 30, 47, 0.75)']}
+            colors={['rgba(2, 30, 47, 0.12)', 'rgba(2, 30, 47, 0.72)']}
           />
           <Header>
             <RiskContainer>
@@ -170,30 +180,33 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
           </Header>
 
           <DetectionPrompt>
-            <PromptHeading>Point the camera toward the water</PromptHeading>
+            <PromptHeading>Ready to scan</PromptHeading>
             <PromptBody>
-              Position yourself facing the shoreline. We’ll analyze live footage
-              for dangerous current patterns.
+              Aim the camera at the shoreline. Tap the button to analyze the
+              scene for hazardous currents.
             </PromptBody>
           </DetectionPrompt>
 
           <ButtonContainer behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <DetectionButton
-              activeOpacity={0.85}
+            <AnimatedTouchable
+              style={{ transform: [{ scale: pressAnim }] }}
+              activeOpacity={0.9}
+              onPressIn={() => animatePress(0.96)}
+              onPressOut={() => animatePress(1)}
               onPress={handleStartDetection}
               disabled={isDetecting}
             >
-              {isDetecting ? (
-                <>
-                  <ActivityIndicator size="large" color="#fff" />
-                  <ButtonLabel>Analyzing…</ButtonLabel>
-                </>
-              ) : (
-                <>
-                  <ButtonLabel>Start Detection</ButtonLabel>
-                </>
-              )}
-            </DetectionButton>
+              <DetectionDial>
+                <DialInner active={isDetecting}>
+                  {isDetecting ? (
+                    <ActivityIndicator size="large" color="#fff" />
+                  ) : (
+                    <DialIcon />
+                  )}
+                </DialInner>
+              </DetectionDial>
+            </AnimatedTouchable>
+            <SmallLabel>{isDetecting ? 'Analyzing…' : 'Start Detection'}</SmallLabel>
           </ButtonContainer>
         </CameraWrapper>
       )}
@@ -261,12 +274,19 @@ const RiskText = styled.Text<ThemeProps>`
 
 const DetectionPrompt = styled.View<ThemeProps>`
   position: absolute;
-  bottom: ${themed((theme) => `${theme.spacing(23)}px`)};
-  left: ${themed((theme) => `${theme.spacing(3)}px`)};
-  right: ${themed((theme) => `${theme.spacing(3)}px`)};
+  bottom: ${themed((theme) => `${theme.spacing(28)}px`)};
+  left: ${themed((theme) => `${theme.spacing(4)}px`)};
+  right: ${themed((theme) => `${theme.spacing(4)}px`)};
   padding: ${themed((theme) => `${theme.spacing(3)}px`)};
   border-radius: ${themed((theme) => `${theme.radii.md}px`)};
   background-color: ${themed((theme) => theme.colors.cameraOverlay)};
+  border-width: 1px;
+  border-color: ${themed((theme) => theme.colors.divider)};
+  shadow-color: #000;
+  shadow-opacity: 0.04;
+  shadow-radius: 10px;
+  shadow-offset: 0px 6px;
+  elevation: 2;
 `;
 
 const PromptHeading = styled.Text<ThemeProps>`
@@ -290,23 +310,51 @@ const ButtonContainer = styled.KeyboardAvoidingView<ThemeProps>`
   align-items: center;
 `;
 
-const DetectionButton = styled.TouchableOpacity<
-  ThemeProps & { disabled?: boolean }
->`
-  width: 120px;
-  height: 120px;
-  border-radius: ${themed((theme) => `${theme.radii.pill}px`)};
-  background-color: ${themed((theme) => theme.colors.primary)};
+const AnimatedTouchable = Animated.createAnimatedComponent(styled.TouchableOpacity<ThemeProps>`
   align-items: center;
   justify-content: center;
-  gap: ${themed((theme) => `${theme.spacing(1)}px`)};
+`);
+
+const DetectionDial = styled.View<ThemeProps>`
+  width: 108px;
+  height: 108px;
+  border-radius: 54px;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255,255,255,0.04);
+  border-width: 1px;
+  border-color: rgba(255,255,255,0.06);
   shadow-color: #000;
-  shadow-offset: 0px 12px;
-  shadow-opacity: 0.25;
-  shadow-radius: 24px;
-  elevation: 10;
-  opacity: ${({ disabled }: { disabled?: boolean }) =>
-    disabled ? 0.75 : 1};
+  shadow-opacity: 0.12;
+  shadow-radius: 18px;
+  shadow-offset: 0px 10px;
+  elevation: 6;
+`;
+
+const DialInner = styled.View<ThemeProps & { active?: boolean }>`
+  width: 72px;
+  height: 72px;
+  border-radius: 36px;
+  align-items: center;
+  justify-content: center;
+  border-width: 2px;
+  border-color: rgba(255,255,255,0.08);
+  background-color: ${({ theme, active }: { theme: AppTheme; active?: boolean }) =>
+    active ? '#E34' : theme.colors.primary};
+`;
+
+const DialIcon = styled.View<ThemeProps>`
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background-color: rgba(255,255,255,0.95);
+`;
+
+const SmallLabel = styled.Text<ThemeProps>`
+  color: ${themed((theme) => theme.colors.textSecondary)};
+  font-size: 14px;
+  margin-top: ${themed((theme) => `${theme.spacing(2)}px`)};
+  text-align: center;
 `;
 
 const ButtonLabel = styled.Text<ThemeProps>`
