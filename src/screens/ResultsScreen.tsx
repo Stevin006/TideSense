@@ -102,7 +102,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   }, [result.status, theme.colors]);
 
   const handleScanAgain = () => {
-    navigation.popToTop();
+    navigation.replace('Camera');
   };
 
   const handleShareAlert = async () => {
