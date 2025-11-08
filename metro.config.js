@@ -2,9 +2,9 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
 /** @type {import('expo/metro-config').MetroConfig} */
-const config = {resolver: {
-    sourceExts: ['js', 'jsx', 'json', 'ts', 'tsx', 'cjs', 'mjs'],
-    assetExts: ['glb', 'gltf', 'png', 'jpg'],
-  },};
+const config = getDefaultConfig(__dirname);
+
+// Add video file extensions to asset types
+config.resolver.assetExts.push('glb', 'gltf', 'mp4', 'mov', 'avi');
 
 module.exports = config;

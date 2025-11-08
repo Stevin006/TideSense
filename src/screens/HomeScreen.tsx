@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import styled from '../theme/styled';
 import type { AppTheme } from '../theme/theme';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { StyleSheet, View, Button } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 const videoSource = require('../../assets/TrueBackground.mp4');
 
@@ -86,17 +86,29 @@ type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const player = useVideoPlayer(videoSource, player => {
     player.loop = true;
-    player.volume = 0;
+    player.muted = true;
     player.play();
   });
+
+  useEffect(() => {
+    // Ensure video plays on mount
+    if (player) {
+      try {
+        player.play();
+      } catch (error) {
+        console.warn('Video autoplay failed:', error);
+      }
+    }
+  }, [player]);
     
   return (
     <Container>
       <View style={styles.videoContainer} pointerEvents="none">
         <VideoView 
           style={styles.video} 
-          player={player} 
-          fullscreenOptions={{ enable: false }}
+          player={player}
+          nativeControls={false}
+          contentFit="cover"
         />
       </View>
       <View style={styles.overlay} />
