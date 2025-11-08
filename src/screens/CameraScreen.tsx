@@ -201,8 +201,8 @@ const ButtonContainer = styled.KeyboardAvoidingView<ThemeProps>`
 const DetectionButton = styled.TouchableOpacity<
   ThemeProps & { disabled?: boolean }
 >`
-  width: 170px;
-  height: 170px;
+  width: 120px;
+  height: 120px;
   border-radius: ${themed((theme) => `${theme.radii.pill}px`)};
   background-color: ${themed((theme) => theme.colors.primary)};
   align-items: center;
