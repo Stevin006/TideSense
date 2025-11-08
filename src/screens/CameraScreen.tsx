@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform } from 'react-native';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +19,9 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const detectionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [riskLevel, setRiskLevel] = useState<'low' | 'moderate' | 'high' | 'unknown'>('unknown');
+  const [isRiskLoading, setIsRiskLoading] = useState(true);
 
   useEffect(() => {
     if (!permission) {
@@ -53,6 +57,68 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
     }, 2200 + Math.random() * 600);
   };
 
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchRiskForLocation = async () => {
+      setIsRiskLoading(true);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          if (mounted) {
+            setRiskLevel('unknown');
+            setIsRiskLoading(false);
+          }
+          return;
+        }
+
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const { latitude, longitude } = loc.coords;
+
+        const resp = await fetch(
+          `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`,
+        );
+
+        if (!resp.ok) {
+          if (mounted) setRiskLevel('unknown');
+        } else {
+          const data = await resp.json();
+          const features = Array.isArray(data.features) ? data.features : [];
+
+          // Map alert severities to a simple risk level
+          let mapped: 'low' | 'moderate' | 'high' = 'low';
+          if (features.length > 0) {
+            const severities = features
+              .map((f: any) => (f?.properties?.severity || '').toString().toLowerCase())
+              .filter(Boolean);
+
+            if (severities.some((s: string) => s.includes('extreme') || s.includes('severe'))) {
+              mapped = 'high';
+            } else if (
+              severities.some((s: string) => s.includes('moderate') || s.includes('minor') || s.includes('watch') || s.includes('advisory'))
+            ) {
+              mapped = 'moderate';
+            } else {
+              mapped = 'moderate';
+            }
+          }
+
+          if (mounted) setRiskLevel(mapped);
+        }
+      } catch (err) {
+        if (mounted) setRiskLevel('unknown');
+      } finally {
+        if (mounted) setIsRiskLoading(false);
+      }
+    };
+
+    fetchRiskForLocation();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const renderPermissionView = () => (
     <PermissionContainer>
       <PermissionTitle>Camera Access Needed</PermissionTitle>
@@ -83,8 +149,24 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
             colors={['rgba(2, 30, 47, 0.15)', 'rgba(2, 30, 47, 0.75)']}
           />
           <Header>
-            <BrandTitle>RipTide Guard</BrandTitle>
-            <BrandSubtitle>AI-powered shoreline safety</BrandSubtitle>
+            <RiskContainer>
+              {isRiskLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <RiskPill level={riskLevel} />
+                  <RiskText>
+                    {riskLevel === 'high'
+                      ? 'High Risk'
+                      : riskLevel === 'moderate'
+                      ? 'Moderate Risk'
+                      : riskLevel === 'low'
+                      ? 'Low Risk'
+                      : 'Location Unavailable'}
+                  </RiskText>
+                </>
+              )}
+            </RiskContainer>
           </Header>
 
           <DetectionPrompt>
@@ -147,24 +229,34 @@ const Overlay = styled(LinearGradient)<ThemeProps>`
 const Header = styled.View<ThemeProps>`
   position: absolute;
   top: ${themed((theme) => `${theme.spacing(6)}px`)};
-  left: ${themed((theme) => `${theme.spacing(3)}px`)};
-  right: ${themed((theme) => `${theme.spacing(3)}px`)};
-  padding: ${themed((theme) => `${theme.spacing(3)}px`)};
+  align-self: center;
+  padding: ${themed((theme) => `${theme.spacing(2)}px`)};
   border-radius: ${themed((theme) => `${theme.radii.md}px`)};
   background-color: ${themed((theme) => theme.colors.cameraOverlay)};
+  align-items: center;
+  justify-content: center;
 `;
 
-const BrandTitle = styled.Text<ThemeProps>`
+const RiskContainer = styled.View<ThemeProps>`
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+`;
+
+const RiskPill = styled.View<ThemeProps & { level?: string }>`
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  margin-right: ${themed((theme) => `${theme.spacing(1)}px`)};
+  background-color: ${({ level = 'unknown' }: { level?: string }) =>
+    level === 'high' ? '#E34' : level === 'moderate' ? '#F2C500' : level === 'low' ? '#2FCB71' : '#808080'};
+`;
+
+const RiskText = styled.Text<ThemeProps>`
   color: ${themed((theme) => theme.colors.textPrimary)};
-  font-size: 28px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.5px;
-`;
-
-const BrandSubtitle = styled.Text<ThemeProps>`
-  color: ${themed((theme) => theme.colors.textSecondary)};
-  margin-top: ${themed((theme) => `${theme.spacing(1)}px`)};
-  font-size: 14px;
 `;
 
 const DetectionPrompt = styled.View<ThemeProps>`
