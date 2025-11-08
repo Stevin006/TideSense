@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform } from 'react-native';
+import { ActivityIndicator, Modal, Platform } from 'react-native';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +19,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [isDetecting, setIsDetecting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const detectionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [riskLevel, setRiskLevel] = useState<'low' | 'moderate' | 'high' | 'unknown'>('unknown');
@@ -137,6 +139,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   return (
     <Container>
       <StatusBar style="light" translucent backgroundColor="transparent" />
+      <SafetyInfoModal visible={showInfoModal} onClose={() => setShowInfoModal(false)} />
       {showPermissionFallback || !isCameraActive ? (
         renderPermissionView()
       ) : (
@@ -195,6 +198,9 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
               )}
             </DetectionButton>
           </ButtonContainer>
+          <InfoButton onPress={() => setShowInfoModal(true)}>
+            <Ionicons name="information-circle" size={32} color="#fff" />
+          </InfoButton>
         </CameraWrapper>
       )}
     </Container>
@@ -353,5 +359,71 @@ const PermissionButtonLabel = styled.Text<ThemeProps>`
   color: ${themed((theme) => theme.colors.textPrimary)};
   font-size: 16px;
   font-weight: 600;
+`;
+
+const InfoButton = styled.TouchableOpacity<ThemeProps>`
+  position: absolute;
+  bottom: ${themed((theme) => `${theme.spacing(6)}px`)};
+  right: ${themed((theme) => `${theme.spacing(4)}px`)};
+  width: 32px;
+  height: 32px;
+  opacity: 0.7;
+`;
+
+const SafetyInfoModal = ({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="fade"
+    onRequestClose={onClose}
+  >
+    <ModalOverlay>
+      <ModalContent>
+        <CloseButton onPress={onClose}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </CloseButton>
+        <SafetyImage
+          source={require('../../assets/rip-currents-safety.png')}
+          resizeMode="contain"
+        />
+      </ModalContent>
+    </ModalOverlay>
+  </Modal>
+);
+
+const ModalOverlay = styled.View<ThemeProps>`
+  flex: 1;
+  background-color: rgba(0, 0, 0, 0.85);
+  align-items: center;
+  justify-content: center;
+  padding: ${themed((theme) => `${theme.spacing(4)}px`)};
+`;
+
+const ModalContent = styled.View<ThemeProps>`
+  width: 100%;
+  max-height: 90%;
+  background-color: transparent;
+  border-radius: ${themed((theme) => `${theme.radii.lg}px`)};
+  overflow: hidden;
+`;
+
+const CloseButton = styled.TouchableOpacity<ThemeProps>`
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  padding: ${themed((theme) => `${theme.spacing(2)}px`)};
+`;
+
+const SafetyImage = styled.Image`
+  width: 100%;
+  height: undefined;
+  aspect-ratio: 1.5;
 `;
 
