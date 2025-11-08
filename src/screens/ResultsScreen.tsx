@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { Animated, Easing, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import styled, { css, useTheme } from '../theme/styled';
 import type { AppTheme } from '../theme/theme';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as Location from 'expo-location';
 
 import type { RootStackParamList } from '../navigation/types';
 import type { DetectionStatus } from '../types/detection';
@@ -34,6 +35,10 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   const theme = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  const [locationName, setLocationName] = useState<string | null>(null);
+  const [isLocationLoading, setIsLocationLoading] = useState(true);
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -42,6 +47,50 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchPointLocation = async () => {
+      setIsLocationLoading(true);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          if (mounted) setLocationName(null);
+          return;
+        }
+
+  const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+  const { latitude, longitude } = loc.coords;
+  if (mounted) setCoords({ latitude, longitude });
+  const url = `https://api.weather.gov/points/${latitude},${longitude}`;
+  console.log('[ResultsScreen] NWS points request:', url);
+  const resp = await fetch(url);
+        if (!resp.ok) {
+          if (mounted) setLocationName(null);
+          return;
+        }
+
+  const data = await resp.json();
+  console.log('[ResultsScreen] NWS points response:', data?.properties?.relativeLocation?.properties);
+  const rel = data?.properties?.relativeLocation?.properties;
+        const city = rel?.city;
+        const state = rel?.state;
+        if (mounted) setLocationName(city && state ? `${city}, ${state}` : null);
+      } catch (err) {
+        console.warn('[ResultsScreen] points lookup failed', err);
+        if (mounted) setLocationName(null);
+      } finally {
+        if (mounted) setIsLocationLoading(false);
+      }
+    };
+
+    fetchPointLocation();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const statusVisuals = useMemo(() => {
     const isSafe = result.status === 'SAFE';
@@ -107,7 +156,12 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
               size={18}
               color={theme.colors.textSecondary}
             />
-            <LocationText>{result.location}</LocationText>
+            <LocationText>{locationName ?? result.location}</LocationText>
+            {coords && (
+              <CoordsText>
+                {coords.latitude.toFixed(4)}, {coords.longitude.toFixed(4)}
+              </CoordsText>
+            )}
           </LocationTag>
         </AnimatedCard>
 
@@ -241,6 +295,12 @@ const LocationTag = styled.View<ThemeProps>`
 const LocationText = styled.Text<ThemeProps>`
   color: ${themed((theme) => theme.colors.textSecondary)};
   font-size: 15px;
+`;
+
+const CoordsText = styled.Text<ThemeProps>`
+  color: ${themed((theme) => theme.colors.textSecondary)};
+  font-size: 12px;
+  margin-top: ${themed((theme) => `${theme.spacing(0.5)}px`)};
 `;
 
 const InfoCard = styled.View<ThemeProps>`
