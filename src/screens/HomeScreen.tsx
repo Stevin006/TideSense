@@ -25,13 +25,13 @@ const Container = styled.View<{ theme: AppTheme }>`
   flex: 1;
   align-items: center;
   justify-content: center;
-  background-color: ${({ theme }) => theme.colors.background};
+  background-color: ${({ theme }: { theme: AppTheme }) => theme.colors.background};
 `;
 
 const StartButton = styled.TouchableOpacity<{ theme: AppTheme }>`
-  padding: ${({ theme }) => `${theme.spacing(3)}px ${theme.spacing(6)}px`};
-  background-color: ${({ theme }) => theme.colors.primary};
-  border-radius: ${({ theme }) => theme.radii.pill}px;
+  padding: ${({ theme }: { theme: AppTheme }) => `${theme.spacing(3)}px ${theme.spacing(6)}px`};
+  background-color: ${({ theme }: { theme: AppTheme }) => theme.colors.primary};
+  border-radius: ${({ theme }: { theme: AppTheme }) => theme.radii.pill}px;
   shadow-color: #000;
   shadow-offset: 0px 4px;
   shadow-opacity: 0.25;
@@ -40,7 +40,7 @@ const StartButton = styled.TouchableOpacity<{ theme: AppTheme }>`
 `;
 
 const ButtonText = styled.Text<{ theme: AppTheme }>`
-  color: ${({ theme }) => theme.colors.textPrimary};
+  color: ${({ theme }: { theme: AppTheme }) => theme.colors.textPrimary};
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.3px;

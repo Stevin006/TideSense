@@ -4,5 +4,6 @@ export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
   Results: { result: DetectionResult };
+  Chat: { detection?: DetectionResult };
 };
 
