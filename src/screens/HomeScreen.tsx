@@ -159,7 +159,7 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
   // Animate the content (text/buttons) upward
   Animated.timing(contentTranslateY, {
     toValue: -1000,
-    duration: 1550,
+    duration: 1500,
     useNativeDriver: true
   }).start();
 
@@ -167,23 +167,23 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
   Animated.parallel([
     Animated.timing(shellsTranslateY, {
       toValue: -1000,
-      duration: 2500,
+      duration: 1200,
       useNativeDriver: true
     }),
     Animated.timing(centerShellTranslateY, {
       toValue: -1000,
-      duration: 100,
+      duration: 700,
       useNativeDriver: true
     }),
     Animated.timing(greenShellTranslateY, {
       toValue: -1000,
-      duration: 100,
+      duration: 700,
       useNativeDriver: true
     }),
   ]).start(() => {
     setTimeout(() => {
       navigation.navigate('Camera');
-    }, 1000);
+    }, 700);
   });
 };
 
