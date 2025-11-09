@@ -6,7 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { StyleSheet, View, Animated, Image } from 'react-native';
+import { StyleSheet, View, Animated, Image, ScrollView } from 'react-native';
 
 const videoSource = require('../../assets/Wave.mp4');
 const pinkShellSource = require('../../assets/pinkShell.png');
@@ -20,27 +20,34 @@ const ScreenContainer = styled.View`
   background-color: ${'rgba(255, 231, 195, 1)'};
 `;
 
-const AnimatedContentWrapper = styled(Animated.View)`
+const AnimatedContentWrapper = styled(Animated.ScrollView)`
   flex: 1;
+`;
+
+const ContentInner = styled.View`
   align-items: center;
   justify-content: center;
   padding: 20px;
+  padding-bottom: 80px;
 `;
 
 const Title = styled.Text`
-  color: ${({ theme }: { theme: AppTheme }) => theme.colors.textPrimary};
-  font-size: 32px;
-  font-weight: bold;
+  color: #0077be;
+  font-size: 42px;
+  font-weight: 800;
   margin-bottom: 10px;
   text-align: center;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.15);
 `;
 
 const Description = styled.Text`
-  color: ${({ theme }: { theme: AppTheme }) => theme.colors.textPrimary};
+  color: #004d73;
   font-size: 18px;
   margin-bottom: 40px;
   text-align: center;
-  opacity: 0.8;
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3);
 `;
 
 const StartButton = styled.TouchableOpacity`
@@ -266,28 +273,52 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
           transform: [
             { translateY: contentTranslateY }
           ],
-          top: 200,
+          top: 80,
           zIndex: 10
         }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
       >
-        <StatusBar style="light" />
-        <Title>TideSense</Title>
-        <Title>Welcome to TideSense</Title>
-        <Description>Your personal wave detection assistant</Description>
-        <StartButton 
-          onPress={handleStartPress}
-          activeOpacity={0.8}
-          style = {{zIndex :20}}
-        >
-          <ButtonText >Start Scanning</ButtonText>
-        </StartButton>
-        <StartButton 
-          onPress={() => navigation.navigate('History')}
-          activeOpacity={0.8}
-          style = {{zIndex :20, marginTop: 16, backgroundColor: '#6b7280'}}
-        >
-          <ButtonText >View History</ButtonText>
-        </StartButton>
+        <ContentInner>
+          <StatusBar style="light" />
+          <Title>Welcome to TideSense</Title>
+          <Description>Your personal riptide detection assistant</Description>
+          <StartButton 
+            onPress={handleStartPress}
+            activeOpacity={0.8}
+            style = {{zIndex :20}}
+          >
+            <ButtonText >Start Scanning</ButtonText>
+          </StartButton>
+          <StartButton 
+            onPress={() => navigation.navigate('History')}
+            activeOpacity={0.8}
+            style = {{zIndex :20, marginTop: 16, backgroundColor: '#6b7280'}}
+          >
+            <ButtonText >View History</ButtonText>
+          </StartButton>
+          <StartButton 
+            onPress={() => navigation.navigate('Weather')}
+            activeOpacity={0.8}
+            style = {{zIndex :20, marginTop: 16, backgroundColor: '#3b82f6'}}
+          >
+            <ButtonText >Weather & Conditions</ButtonText>
+          </StartButton>
+          <StartButton 
+            onPress={() => navigation.navigate('SafetyMap')}
+            activeOpacity={0.8}
+            style = {{zIndex :20, marginTop: 16, backgroundColor: '#10b981'}}
+          >
+            <ButtonText >Safety Map</ButtonText>
+          </StartButton>
+          <StartButton 
+            onPress={() => navigation.navigate('Analytics')}
+            activeOpacity={0.8}
+            style = {{zIndex :20, marginTop: 16, backgroundColor: '#8b5cf6'}}
+          >
+            <ButtonText >Analytics Dashboard</ButtonText>
+          </StartButton>
+        </ContentInner>
       </AnimatedContentWrapper>
     </ScreenContainer>
   );
