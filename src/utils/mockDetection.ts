@@ -26,31 +26,55 @@ const getRandomItem = <T,>(arr: readonly T[]): T =>
   arr[Math.floor(Math.random() * arr.length)];
 
 export const generateMockDetectionResult = (): DetectionResult => {
-  const isSafe = Math.random() > 0.4;
-  const probability = isSafe
-    ? Math.floor(5 + Math.random() * 25)
-    : Math.floor(60 + Math.random() * 35);
+  const rand = Math.random();
+  let status: DetectionResult['status'];
+  let probability: number;
+  
+  if (rand < 0.3) {
+    status = 'LOW';
+    probability = Math.floor(5 + Math.random() * 25);
+  } else if (rand < 0.6) {
+    status = 'MODERATE';
+    probability = Math.floor(30 + Math.random() * 30);
+  } else {
+    status = 'HIGH';
+    probability = Math.floor(60 + Math.random() * 35);
+  }
+
+  const isSafe = status === 'LOW';
 
   return {
-    status: isSafe ? 'SAFE' : 'UNSAFE',
+    status,
     probability,
+    timestamp: new Date().toISOString(),
+    location: {
+      name: getRandomItem(LOCATIONS),
+    },
+    weatherAlerts: null,
     waveHeight: getRandomItem(WAVE_HEIGHTS),
     currentStrength: isSafe
       ? getRandomItem(['Calm', 'Mild'])
       : getRandomItem(['Moderate', 'Strong', 'Severe']),
-    location: getRandomItem(LOCATIONS),
     recommendations: isSafe
       ? [
+          '✅ Conditions appear relatively safe',
           'Swim with a buddy and stay attentive.',
           'Stay within designated swim zones.',
           getRandomItem(SAFE_MESSAGES),
         ]
+      : status === 'MODERATE'
+      ? [
+          '⚡ CAUTION - Possible riptide conditions detected',
+          'Exercise extreme caution if entering water',
+          'Stay close to shore and in designated swimming areas',
+          'Swim parallel to shore if caught in a current',
+        ]
       : [
+          '⚠️ DO NOT ENTER THE WATER - Dangerous riptide detected',
           'Do not enter the water until conditions improve.',
           'Alert nearby swimmers and lifeguards.',
           getRandomItem(UNSAFE_MESSAGES),
         ],
-    timestamp: new Date().toISOString(),
   };
 };
 

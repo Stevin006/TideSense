@@ -19,6 +19,22 @@ const STATUS_CONTENT: Record<
   DetectionStatus,
   { headline: string; subtext: string; icon: IconName }
 > = {
+  LOW: {
+    headline: 'Low Risk Detected',
+    subtext: 'Conditions appear relatively safe. Always swim with caution.',
+    icon: 'shield-checkmark',
+  },
+  MODERATE: {
+    headline: 'Moderate Risk — Exercise Caution',
+    subtext: 'Possible riptide conditions detected. Stay alert and near shore.',
+    icon: 'alert-circle',
+  },
+  HIGH: {
+    headline: 'High Risk — Stay Out of Water',
+    subtext: 'Dangerous riptide detected. Do not enter the water.',
+    icon: 'warning',
+  },
+  // Legacy support
   SAFE: {
     headline: 'Safe to Swim',
     subtext: 'No hazardous currents detected in the last scan.',
@@ -29,15 +45,17 @@ const STATUS_CONTENT: Record<
     subtext: 'Dangerous current signature spotted. Keep clear of the water.',
     icon: 'warning',
   },
+  DANGER: {
+    headline: 'Riptide Detected — Stay Out',
+    subtext: 'Dangerous current signature spotted. Keep clear of the water.',
+    icon: 'warning',
+  },
 };
 
-// Backend API URL
-// For Android emulator use 10.0.2.2, for iOS simulator/device use your local network IP
-const API_BASE = Platform.OS === 'android' 
+// Backend API URL - use your Mac's local IP for physical devices/Expo Go
+const API_BASE = Platform.OS === 'android' && !__DEV__ 
   ? 'http://10.0.2.2:8000' 
-  : __DEV__ 
-    ? 'http://10.14.31.26:8000'  // Your local network IP for real devices
-    : 'http://127.0.0.1:8000';       // Fallback for production
+  : 'http://10.14.31.26:8000';
 
 export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   const { result } = route.params;
@@ -197,11 +215,34 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   }, []);
 
   const statusVisuals = useMemo(() => {
-    const isSafe = result.status === 'SAFE';
+    const status = result.status;
+    let color: string;
+    let accent: string;
+    
+    switch (status) {
+      case 'LOW':
+      case 'SAFE':
+        color = theme.colors.success || '#2FCB71';
+        accent = theme.colors.primary;
+        break;
+      case 'MODERATE':
+        color = '#F2C500'; // Yellow/Orange for caution
+        accent = theme.colors.warning;
+        break;
+      case 'HIGH':
+      case 'DANGER':
+        color = theme.colors.danger || '#E34';
+        accent = theme.colors.warning;
+        break;
+      default:
+        color = theme.colors.textSecondary;
+        accent = theme.colors.primary;
+    }
+    
     return {
       ...STATUS_CONTENT[result.status],
-      color: isSafe ? theme.colors.success : theme.colors.danger,
-      accent: isSafe ? theme.colors.primary : theme.colors.warning,
+      color,
+      accent,
     };
   }, [result.status, theme.colors]);
 
@@ -215,14 +256,29 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   };
 
   const handleShareAlert = async () => {
-    const locationText = locationName || result.location || 'Unknown location';
+    const locationText = locationName || result.location?.name || 'Unknown location';
     try {
+      let message = '';
+      
+      switch (result.status) {
+        case 'HIGH':
+        case 'DANGER':
+          message = `🚨 DANGER - RIPTIDE DETECTED at ${locationText}!\n\nRisk Level: HIGH (${result.probability}% confidence)\n⚠️ DO NOT ENTER THE WATER\n\nStay at least 100 feet from shoreline and alert authorities immediately.`;
+          break;
+        case 'MODERATE':
+          message = `⚠️ CAUTION - Possible riptide at ${locationText}\n\nRisk Level: MODERATE (${result.probability}% confidence)\n\nExercise extreme caution. Stay close to shore and near lifeguards.`;
+          break;
+        case 'LOW':
+        case 'SAFE':
+          message = `✅ TideSense scan at ${locationText}: Conditions appear safe\n\nRisk Level: LOW (${result.probability}% confidence)\n\nAlways swim near a lifeguard and never swim alone.`;
+          break;
+        default:
+          message = `TideSense detection at ${locationText}: ${result.status} (${result.probability}% confidence)`;
+      }
+      
       await Share.share({
         title: 'TideSense Alert',
-        message:
-          result.status === 'SAFE'
-            ? `TideSense scan at ${locationText}: Safe to swim (${result.probability}% confidence).`
-            : `⚠️ RIPTIDE DETECTED at ${locationText}. Probability ${result.probability}%. Stay out of the water and alert others!`,
+        message,
       });
     } catch (error) {
       console.warn('Share failed', error);
@@ -275,7 +331,9 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
     // Build text to speak
     const textToSpeak = summary
       ? `${summary} ${bullets.join('. ')}`
-      : result.recommendations.join('. ') || `${result.status}. Confidence: ${result.probability}%`;
+      : (result.recommendations && result.recommendations.length > 0) 
+        ? result.recommendations.join('. ') 
+        : `${result.status}. Confidence: ${result.probability}%`;
 
     try {
       // If audio exists and player is ready, toggle pause
@@ -384,7 +442,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
             <LocationText>
               {isLocationLoading
                 ? 'Locating...'
-                : locationName || result.location || 'Unknown'}
+                : locationName || (typeof result.location === 'string' ? result.location : result.location?.name) || 'Unknown'}
             </LocationText>
             {coords && (
               <CoordsText>
@@ -482,12 +540,12 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
               </SecondaryButtonLabel>
             </AnimatedPlayButton>
 
-            {result.status === 'UNSAFE' && (
+            {(result.status === 'HIGH' || result.status === 'MODERATE' || result.status === 'UNSAFE' || result.status === 'DANGER') && (
               <SecondaryButton onPress={handleShareAlert} activeOpacity={0.85}>
                 <Ionicons
                   name="share-social"
                   size={18}
-                  color={theme.colors.danger}
+                  color={result.status === 'MODERATE' ? '#F2C500' : theme.colors.danger}
                   style={{ marginRight: 8 }}
                 />
                 <AlertButtonLabel>Share Alert</AlertButtonLabel>
