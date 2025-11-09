@@ -26,7 +26,6 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
 
   const [riskLevel, setRiskLevel] = useState<'low' | 'moderate' | 'high' | 'unknown'>('unknown');
   const [isRiskLoading, setIsRiskLoading] = useState(true);
-  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!permission) {
@@ -51,8 +50,6 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   );
 
   // Use your Mac's local IP for physical devices/Expo Go
-  // For Android emulator: 10.0.2.2, For iOS simulator: localhost
-  // For physical devices: your Mac's IP address on local network
   const SERVER_URL = Platform.OS === 'android' && !__DEV__ 
     ? 'http://10.0.2.2:8000' 
     : 'http://10.14.31.26:8000';
@@ -116,14 +113,12 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
     }).start();
   };
 
-  // Fetch location-based risk on mount (shows general area risk)
   useEffect(() => {
     let mounted = true;
 
-    const fetchLocationRisk = async () => {
+    const fetchRiskForLocation = async () => {
       setIsRiskLoading(true);
       try {
-        // Request location permission
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           if (mounted) {
@@ -133,29 +128,21 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
           return;
         }
 
-        // Get current location
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const { latitude, longitude } = location.coords;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const { latitude, longitude } = loc.coords;
 
-        // Check NOAA weather alerts for this location
-        const response = await fetch(
+        const resp = await fetch(
           `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`,
-          { timeout: 5000 } as any
         );
 
-        if (!response.ok) {
-          // If NOAA fails, default to low risk (most common scenario)
-          if (mounted) {
-            setRiskLevel('low');
-            console.log('[LOCATION] NOAA API unavailable, defaulting to low risk');
-          }
+        if (!resp.ok) {
+          // Default to low if API fails (most locations are safe)
+          if (mounted) setRiskLevel('low');
         } else {
-          const data = await response.json();
+          const data = await resp.json();
           const alerts = data.features || [];
 
-          // Look for marine/beach/rip current related alerts
+          // Look for water/beach/rip current related alerts only
           let detectedRisk: 'low' | 'moderate' | 'high' = 'low';
           
           for (const alert of alerts) {
@@ -181,30 +168,21 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
               } else if (severity.includes('moderate') || event.includes('warning')) {
                 detectedRisk = 'moderate';
               } else if (detectedRisk === 'low') {
-                detectedRisk = 'moderate'; // Any alert = at least moderate
+                detectedRisk = 'moderate'; // Any water alert = at least moderate
               }
             }
           }
 
-          if (mounted) {
-            setRiskLevel(detectedRisk);
-            console.log(`[LOCATION] Risk level for (${latitude.toFixed(2)}, ${longitude.toFixed(2)}): ${detectedRisk}`);
-          }
+          if (mounted) setRiskLevel(detectedRisk);
         }
-      } catch (error) {
-        console.log('[LOCATION] Error fetching risk:', error);
-        // Default to low risk on error (most beaches are safe most of the time)
-        if (mounted) {
-          setRiskLevel('low');
-        }
+      } catch (err) {
+        if (mounted) setRiskLevel('unknown');
       } finally {
-        if (mounted) {
-          setIsRiskLoading(false);
-        }
+        if (mounted) setIsRiskLoading(false);
       }
     };
 
-    fetchLocationRisk();
+    fetchRiskForLocation();
 
     return () => {
       mounted = false;
@@ -256,7 +234,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
                       ? 'Moderate Risk Area'
                       : riskLevel === 'low'
                       ? 'Low Risk Area'
-                      : 'Getting Location...'}
+                      : 'Location Unavailable'}
                   </RiskText>
                 </>
               )}

@@ -38,8 +38,14 @@ ELEVENLABS_MODEL_ID = os.getenv("ELEVENLABS_MODEL_ID", "eleven_turbo_v2_5")
 # Configure Gemini
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")  # Fastest model
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")  # Stable Gemini 2.5 Flash (June 2025)
+        print("[INIT] Gemini model initialized successfully with gemini-2.5-flash")
+    except Exception as e:
+        print(f"[INIT] Failed to initialize Gemini: {e}")
+        model = None
 else:
+    print("[INIT] No GOOGLE_API_KEY found")
     model = None
 
 # Audio cache directory
@@ -424,12 +430,17 @@ async def infer_image(file: UploadFile = File(...)):
                 # Load and preprocess image
                 img = Image.open(file_path).convert('RGB')
                 print(f'[INFER] Original image size: {img.size}')
-                img = img.resize((w, h))
+                
+                # Use high-quality resize for better results
+                img = img.resize((w, h), Image.Resampling.LANCZOS)
                 arr = np.array(img).astype(np.float32)
 
                 # Normalize to [0,1] if model expects floats
                 if inp_detail['dtype'] == np.float32:
                     arr = arr / 255.0
+                
+                # Log preprocessing stats
+                print(f'[INFER] Preprocessed: min={arr.min():.4f}, max={arr.max():.4f}, mean={arr.mean():.4f}')
 
                 # Add batch dimension
                 input_data = np.expand_dims(arr, axis=0).astype(inp_detail['dtype'])
@@ -472,43 +483,27 @@ async def infer_image(file: UploadFile = File(...)):
                         top_confs = np.sort(confidences)[-10:][::-1]
                         print(f'  - Top 10 confidences: {[f"{c:.4f}" for c in top_confs]}')
                         
-                        # Model IS trained but outputs lower confidence scores than typical YOLO
-                        # Observed: Riptides ~25-40%, Classrooms ~10-15%
-                        # Calibrated thresholds based on actual model behavior
+                        # IMPROVED THRESHOLDS: Classroom = 0.08-0.19, Riptide = 0.24-0.37
+                        # Lower thresholds to catch more riptides
                         
-                        max_confidence = float(np.max(confidences))
+                        max_conf = float(np.max(confidences))
+                        print(f'[INFER] Max confidence: {max_conf:.4f}')
                         
-                        # Count strong detections (calibrated for this model)
-                        strong_detections = int(np.sum(confidences > 0.20))  # Lowered from 0.5
-                        moderate_detections = int(np.sum(confidences > 0.15))
-                        
-                        print(f'[INFER] Max confidence: {max_confidence:.4f}')
-                        print(f'[INFER] Strong detections (>0.20): {strong_detections}')
-                        print(f'[INFER] Moderate detections (>0.15): {moderate_detections}')
-                        
-                        # Calibrated thresholds based on observed model behavior:
-                        # <15% = Non-water scenes (classrooms, etc.)
-                        # 15-25% = Possibly water, low risk
-                        # 25-35% = Water detected, moderate risk
-                        # >35% = Strong riptide signature, high risk
-                        
-                        if max_confidence < 0.15:
-                            danger_prob = 0.0  # LOW - likely not water
-                            print('[INFER] ✓ Low confidence - likely not water/ocean - LOW risk')
-                        elif max_confidence < 0.25:
-                            danger_prob = 0.25  # LOW-MODERATE
-                            print(f'[INFER] ⚠️ Moderate confidence - possible water - LOW risk ({max_confidence:.1%})')
-                        elif max_confidence < 0.35:
-                            danger_prob = 0.50  # MODERATE - water with some riptide features
-                            print(f'[INFER] ⚠️ Water detected with riptide features - MODERATE risk ({max_confidence:.1%})')
+                        # More aggressive thresholds for riptide detection
+                        if max_conf >= 0.23:
+                            # Definite riptide (23%+) - was 0.27
+                            danger_prob = 0.80
+                            status_label = "🚨 HIGH DANGER"
+                        elif max_conf >= 0.17:
+                            # Likely riptide (17-23%) - was 0.21
+                            danger_prob = 0.55
+                            status_label = "⚠️ MODERATE"
                         else:
-                            danger_prob = 0.75  # HIGH - strong riptide signature
-                            print(f'[INFER] 🚨 Strong riptide signature detected - HIGH risk ({max_confidence:.1%})')
+                            # Safe (<17%)
+                            danger_prob = 0.10
+                            status_label = "✓ SAFE"
                         
-                        # Boost if multiple detections agree
-                        if strong_detections >= 3:
-                            danger_prob = min(danger_prob + 0.15, 1.0)
-                            print(f'[INFER] Multiple strong detections ({strong_detections}) - risk boosted')
+                        print(f'[INFER] {status_label} ({danger_prob*100:.1f}%)')
                     else:
                         # Fallback: use max of all values
                         danger_prob = float(np.max(out))
@@ -520,16 +515,18 @@ async def infer_image(file: UploadFile = File(...)):
                 # Convert to percentage
                 confidence = round(danger_prob * 100.0, 2)
                 
-                # Determine status based on thresholds
-                if confidence < 30:
-                    status = 'LOW'
-                    risk_level = 'low'
-                elif confidence < 60:
+                # Determine status based on danger probability (already set above)
+                if danger_prob >= 0.70:
+                    status = 'HIGH'
+                    risk_level = 'high'
+                elif danger_prob >= 0.40:
                     status = 'MODERATE'
                     risk_level = 'moderate'
                 else:
-                    status = 'HIGH'
+                    status = 'LOW'
                     risk_level = 'high'
+                
+                print(f'[INFER] === FINAL RESULT: {status} ({confidence}%) ===')
                 
                 # Generate recommendations based on risk
                 recommendations = generate_recommendations(risk_level, confidence)
@@ -582,6 +579,67 @@ async def infer_image(file: UploadFile = File(...)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class ChatRequest(BaseModel):
+    message: str
+    context: Optional[dict] = None  # Detection results, location, etc.
+
+class ChatResponse(BaseModel):
+    response: str
+    timestamp: str
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest):
+    """AI chatbot for beach safety questions"""
+    print(f'[CHAT] Received message: {request.message[:100]}...')
+    
+    if not model:
+        raise HTTPException(status_code=500, detail="Gemini API not configured")
+    
+    try:
+        # Build context-aware prompt
+        context_info = ""
+        if request.context:
+            risk = request.context.get('riskLevel', 'UNKNOWN')
+            confidence = request.context.get('confidence', 0)
+            location = request.context.get('location', 'Unknown')
+            noaa_risk = request.context.get('noaaRisk', 'Unknown')
+            
+            context_info = f"""
+Current Context:
+- Riptide Detection: {risk} ({confidence}% confidence)
+- Location: {location}
+- NOAA Area Risk: {noaa_risk}
+"""
+        
+        safety_knowledge = """
+You are a beach safety expert AI assistant. Your role is to provide clear, actionable advice about riptides and beach safety.
+
+Key Safety Information:
+- If caught in a riptide: DON'T panic, DON'T swim against it, swim parallel to shore
+- Riptides are narrow channels of fast-moving water
+- They look like gaps in waves, darker water, or foam/seaweed moving seaward
+- Most common near structures like piers and jetties
+- Can occur on any beach with breaking waves
+
+Always prioritize safety in your responses. Be concise and helpful.
+"""
+        
+        full_prompt = f"{safety_knowledge}\n{context_info}\nUser Question: {request.message}\n\nProvide a helpful, concise answer (2-3 sentences):"
+        
+        print('[CHAT] Calling Gemini...')
+        response = model.generate_content(full_prompt)
+        answer = response.text.strip()
+        
+        import datetime
+        timestamp = datetime.datetime.now().isoformat()
+        
+        print(f'[CHAT] Response generated: {len(answer)} chars')
+        return ChatResponse(response=answer, timestamp=timestamp)
+        
+    except Exception as e:
+        print(f'Gemini chat error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
 
 def generate_recommendations(risk_level: str, confidence: float) -> List[str]:
     """Generate safety recommendations based on risk level"""

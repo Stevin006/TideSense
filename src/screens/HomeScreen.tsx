@@ -271,7 +271,7 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
         }}
       >
         <StatusBar style="light" />
-        <Title>Welcome to RipTide</Title>
+        <Title>TideSense</Title>
         <Description>Your personal wave detection assistant</Description>
         <StartButton 
           onPress={handleStartPress}
@@ -279,6 +279,13 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
           style = {{zIndex :20}}
         >
           <ButtonText >Start App</ButtonText>
+        </StartButton>
+        <StartButton 
+          onPress={() => navigation.navigate('History')}
+          activeOpacity={0.8}
+          style = {{zIndex :20, marginTop: 16, backgroundColor: '#6b7280'}}
+        >
+          <ButtonText >View History</ButtonText>
         </StartButton>
       </AnimatedContentWrapper>
     </ScreenContainer>

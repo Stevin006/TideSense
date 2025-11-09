@@ -17,8 +17,8 @@ import type { RootStackParamList } from '../navigation/types';
 
 type ChatScreenProps = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
-const API_BASE =
-  Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+// Backend API URL
+const API_BASE = Platform.OS === 'android' && !__DEV__ ? 'http://10.0.2.2:8000' : 'http://10.14.31.26:8000';
 
 interface Message {
   id: string;
@@ -75,16 +75,20 @@ export const ChatScreen = ({ navigation, route }: ChatScreenProps) => {
     setIsLoading(true);
 
     try {
+      // Build context from detection if available
+      const context = detection ? {
+        riskLevel: detection.status,
+        confidence: detection.probability,
+        location: detection.location?.name || 'Unknown',
+      } : undefined;
+
       // Call backend chat endpoint
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageText,
-          detection: detection || undefined,
-          history: messages
-            .slice(-10)
-            .map((msg) => ({ role: msg.role, content: msg.content })),
+          context: context,
         }),
       });
 
