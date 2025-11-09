@@ -38,7 +38,7 @@ ELEVENLABS_MODEL_ID = os.getenv("ELEVENLABS_MODEL_ID", "eleven_turbo_v2_5")
 # Configure Gemini
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-pro")
+    model = genai.GenerativeModel("gemini-2.0-flash-exp")  # Fastest model
 else:
     model = None
 
@@ -102,7 +102,12 @@ async def summarize_detection(request: SummarizeRequest):
     """
     Generate AI summary of riptide detection results using Gemini
     """
+    import time
+    start_time = time.time()
+    print(f"[SUMMARIZE] Starting request for status: {request.detection.status}")
+    
     if not model:
+        print("[SUMMARIZE] No Gemini model, using fallback")
         # Fallback to rule-based summary
         return generate_fallback_summary(request.detection)
 
@@ -146,8 +151,11 @@ BULLETS:
 Keep it concise and actionable. Focus on what the user should DO."""
 
         # Call Gemini
+        print(f"[SUMMARIZE] Calling Gemini model...")
         response = model.generate_content(prompt)
         text = response.text
+        elapsed = time.time() - start_time
+        print(f"[SUMMARIZE] Gemini response received in {elapsed:.2f}s")
 
         # Parse response
         summary_part = ""
@@ -188,7 +196,13 @@ async def text_to_speech(request: TTSRequest):
     """
     Convert text to speech using ElevenLabs with caching
     """
+    print(f"[TTS] Received request for text: {request.text[:50]}...")
+    print(f"[TTS] API Key configured: {bool(ELEVENLABS_API_KEY)}")
+    print(f"[TTS] Voice ID: {ELEVENLABS_VOICE_ID}")
+    print(f"[TTS] Model ID: {ELEVENLABS_MODEL_ID}")
+    
     if not ELEVENLABS_API_KEY:
+        print("[TTS] ERROR: ElevenLabs API key not configured!")
         raise HTTPException(
             status_code=503,
             detail="ElevenLabs API not configured. Set ELEVENLABS_API_KEY environment variable."
@@ -200,8 +214,10 @@ async def text_to_speech(request: TTSRequest):
 
     # Return cached file if exists
     if cache_file.exists():
+        print(f"[TTS] Returning cached file: {text_hash}.mp3")
         return TTSResponse(tts_url=f"/audio/{text_hash}.mp3")
 
+    print(f"[TTS] Cache miss, calling ElevenLabs API...")
     try:
         # Call ElevenLabs API
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
@@ -221,17 +237,20 @@ async def text_to_speech(request: TTSRequest):
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
+            print(f"[TTS] Calling ElevenLabs API: {url}")
             response = await client.post(url, json=payload, headers=headers)
+            print(f"[TTS] ElevenLabs response status: {response.status_code}")
             response.raise_for_status()
 
             # Save to cache
             with open(cache_file, "wb") as f:
                 f.write(response.content)
-
+            
+            print(f"[TTS] Audio cached successfully: {cache_file}")
             return TTSResponse(tts_url=f"/audio/{text_hash}.mp3")
 
     except Exception as e:
-        print(f"ElevenLabs API error: {e}")
+        print(f"[TTS] ERROR: {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
 
 
