@@ -521,6 +521,24 @@ const SafetyInfoModal = ({
           source={require('../../assets/rip-currents-safety.png')}
           resizeMode="contain"
         />
+          <TipsContainer>
+            <TipRow>
+              <TipBullet>•</TipBullet>
+              <TipText>Relax — rip currents don't pull you under the water.</TipText>
+            </TipRow>
+            <TipRow>
+              <TipBullet>•</TipBullet>
+              <TipText>Don't swim against the current; swim parallel to shore to escape.</TipText>
+            </TipRow>
+            <TipRow>
+              <TipBullet>•</TipBullet>
+              <TipText>If you can't escape, float or tread water and signal for help.</TipText>
+            </TipRow>
+            <TipRow>
+              <TipBullet>•</TipBullet>
+              <TipText>If possible, move toward areas with lifeguards and call for assistance.</TipText>
+            </TipRow>
+          </TipsContainer>
       </ModalContent>
     </ModalOverlay>
   </Modal>
@@ -536,10 +554,12 @@ const ModalOverlay = styled.View<ThemeProps>`
 
 const ModalContent = styled.View<ThemeProps>`
   width: 100%;
-  max-height: 90%;
+  max-height: 92%;
   background-color: transparent;
   border-radius: ${themed((theme) => `${theme.radii.lg}px`)};
-  overflow: hidden;
+  overflow: visible;
+  align-items: center;
+  padding-bottom: ${themed((theme) => `${theme.spacing(3)}px`)};
 `;
 
 const CloseButton = styled.TouchableOpacity<ThemeProps>`
@@ -551,8 +571,37 @@ const CloseButton = styled.TouchableOpacity<ThemeProps>`
 `;
 
 const SafetyImage = styled.Image`
-  width: 100%;
+  width: 160%;
   height: undefined;
   aspect-ratio: 1.5;
+  align-self: center;
+`;
+
+const TipsContainer = styled.View<ThemeProps>`
+  width: 94%;
+  background-color: ${themed((theme) => theme.colors.cardBackground)};
+  padding: ${themed((theme) => `${theme.spacing(2)}px`)};
+  border-radius: ${themed((theme) => `${theme.radii.md}px`)};
+  margin-top: ${themed((theme) => `${theme.spacing(0)}px`)};
+  border-width: 1px;
+  border-color: ${themed((theme) => theme.colors.divider)};
+`;
+
+const TipRow = styled.View<ThemeProps>`
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: ${themed((theme) => `${theme.spacing(1)}px`)};
+`;
+
+const TipBullet = styled.Text<ThemeProps>`
+  color: ${themed((theme) => theme.colors.textSecondary)};
+  margin-right: ${themed((theme) => `${theme.spacing(2)}px`)};
+  font-size: 18px;
+`;
+
+const TipText = styled.Text<ThemeProps>`
+  color: ${themed((theme) => theme.colors.textPrimary)};
+  flex: 1;
+  font-size: 15px;
 `;
 
