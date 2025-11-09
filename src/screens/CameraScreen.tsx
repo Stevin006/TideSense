@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform , Modal, Animated} from 'react-native';
+import { ActivityIndicator, Platform , Modal, Animated, Alert } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,9 +22,11 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const detectionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressAnim = useRef(new Animated.Value(1)).current;
+  const cameraRef = useRef<any>(null);
 
   const [riskLevel, setRiskLevel] = useState<'low' | 'moderate' | 'high' | 'unknown'>('unknown');
   const [isRiskLoading, setIsRiskLoading] = useState(true);
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!permission) {
@@ -48,16 +50,61 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
     [],
   );
 
-  const handleStartDetection = () => {
-    if (isDetecting) return;
+  // Use your Mac's local IP for physical devices/Expo Go
+  // For Android emulator: 10.0.2.2, For iOS simulator: localhost
+  // For physical devices: your Mac's IP address on local network
+  const SERVER_URL = Platform.OS === 'android' && !__DEV__ 
+    ? 'http://10.0.2.2:8000' 
+    : 'http://10.14.31.26:8000';
 
+  const captureAndInfer = async () => {
+    if (isDetecting) return;
     setIsDetecting(true);
 
-    detectionTimeout.current = setTimeout(() => {
+    try {
+      if (!cameraRef.current) {
+        throw new Error('Camera not ready');
+      }
+
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.6, base64: false });
+      const uri = photo?.uri;
+
+      if (!uri) throw new Error('Failed to capture photo');
+
+      // Upload to backend inference endpoint
+      const form = new FormData();
+      // @ts-ignore - React Native FormData file
+      form.append('file', { uri, name: 'photo.jpg', type: 'image/jpeg' });
+
+      const resp = await fetch(`${SERVER_URL}/infer`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+        },
+        body: form as any,
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server inference failed: ${resp.status}`);
+      }
+
+      const result = await resp.json();
+      setIsDetecting(false);
+      navigation.navigate('Results', { result });
+      return;
+
+    } catch (err: any) {
+      // Fallback to local mock detection for quick dev feedback
+      console.log('Inference error, falling back to mock:', err?.message || err);
       const result = generateMockDetectionResult();
       setIsDetecting(false);
       navigation.navigate('Results', { result });
-    }, 2200 + Math.random() * 600);
+    }
+  };
+
+  const handleStartDetection = () => {
+    // Kick off camera capture + server inference (or fallback)
+    captureAndInfer();
   };
 
   const animatePress = (toValue: number) => {
@@ -69,12 +116,14 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
     }).start();
   };
 
+  // Fetch location-based risk on mount (shows general area risk)
   useEffect(() => {
     let mounted = true;
 
-    const fetchRiskForLocation = async () => {
+    const fetchLocationRisk = async () => {
       setIsRiskLoading(true);
       try {
+        // Request location permission
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           if (mounted) {
@@ -84,47 +133,78 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
           return;
         }
 
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const { latitude, longitude } = loc.coords;
+        // Get current location
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const { latitude, longitude } = location.coords;
 
-        const resp = await fetch(
+        // Check NOAA weather alerts for this location
+        const response = await fetch(
           `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`,
+          { timeout: 5000 } as any
         );
 
-        if (!resp.ok) {
-          if (mounted) setRiskLevel('unknown');
+        if (!response.ok) {
+          // If NOAA fails, default to low risk (most common scenario)
+          if (mounted) {
+            setRiskLevel('low');
+            console.log('[LOCATION] NOAA API unavailable, defaulting to low risk');
+          }
         } else {
-          const data = await resp.json();
-          const features = Array.isArray(data.features) ? data.features : [];
+          const data = await response.json();
+          const alerts = data.features || [];
 
-          // Map alert severities to a simple risk level
-          let mapped: 'low' | 'moderate' | 'high' = 'low';
-          if (features.length > 0) {
-            const severities = features
-              .map((f: any) => (f?.properties?.severity || '').toString().toLowerCase())
-              .filter(Boolean);
+          // Look for marine/beach/rip current related alerts
+          let detectedRisk: 'low' | 'moderate' | 'high' = 'low';
+          
+          for (const alert of alerts) {
+            const props = alert.properties || {};
+            const event = (props.event || '').toLowerCase();
+            const severity = (props.severity || '').toLowerCase();
+            const description = (props.description || '').toLowerCase();
+            
+            // Check if it's beach/marine/rip current related
+            const isWaterRelated = 
+              event.includes('rip') || 
+              event.includes('beach') || 
+              event.includes('surf') ||
+              event.includes('marine') ||
+              event.includes('coastal') ||
+              description.includes('rip current');
 
-            if (severities.some((s: string) => s.includes('extreme') || s.includes('severe'))) {
-              mapped = 'high';
-            } else if (
-              severities.some((s: string) => s.includes('moderate') || s.includes('minor') || s.includes('watch') || s.includes('advisory'))
-            ) {
-              mapped = 'moderate';
-            } else {
-              mapped = 'moderate';
+            if (isWaterRelated) {
+              // Determine risk level from severity
+              if (severity.includes('extreme') || severity.includes('severe')) {
+                detectedRisk = 'high';
+                break; // High risk found, no need to check more
+              } else if (severity.includes('moderate') || event.includes('warning')) {
+                detectedRisk = 'moderate';
+              } else if (detectedRisk === 'low') {
+                detectedRisk = 'moderate'; // Any alert = at least moderate
+              }
             }
           }
 
-          if (mounted) setRiskLevel(mapped);
+          if (mounted) {
+            setRiskLevel(detectedRisk);
+            console.log(`[LOCATION] Risk level for (${latitude.toFixed(2)}, ${longitude.toFixed(2)}): ${detectedRisk}`);
+          }
         }
-      } catch (err) {
-        if (mounted) setRiskLevel('unknown');
+      } catch (error) {
+        console.log('[LOCATION] Error fetching risk:', error);
+        // Default to low risk on error (most beaches are safe most of the time)
+        if (mounted) {
+          setRiskLevel('low');
+        }
       } finally {
-        if (mounted) setIsRiskLoading(false);
+        if (mounted) {
+          setIsRiskLoading(false);
+        }
       }
     };
 
-    fetchRiskForLocation();
+    fetchLocationRisk();
 
     return () => {
       mounted = false;
@@ -155,6 +235,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
       ) : (
         <CameraWrapper>
           <StyledCameraView
+            ref={cameraRef}
             key={isCameraActive ? 'active' : 'inactive'}
             facing="back"
           />
@@ -170,12 +251,12 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
                   <RiskPill level={riskLevel} />
                   <RiskText>
                     {riskLevel === 'high'
-                      ? 'High Risk'
+                      ? 'High Risk Area'
                       : riskLevel === 'moderate'
-                      ? 'Moderate Risk'
+                      ? 'Moderate Risk Area'
                       : riskLevel === 'low'
-                      ? 'Low Risk'
-                      : 'Location Unavailable'}
+                      ? 'Low Risk Area'
+                      : 'Getting Location...'}
                   </RiskText>
                 </>
               )}

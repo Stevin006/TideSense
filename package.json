@@ -26,13 +26,12 @@
     "expo-av": "~16.0.7",
     "expo-camera": "~17.0.9",
     "expo-file-system": "^19.0.17",
-    "expo-gl": "~16.0.7",
     "expo-linear-gradient": "~15.0.7",
     "expo-location": "~19.0.7",
     "expo-speech": "~14.0.7",
     "expo-status-bar": "~3.0.8",
     "expo-video": "~3.0.14",
-    "react": "19.1.0",
+    "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-native": "^0.81.5",
     "react-native-gesture-handler": "^2.29.1",
@@ -45,7 +44,7 @@
   "devDependencies": {
     "@types/expo__vector-icons": "^9.0.1",
     "@types/react": "~19.1.0",
-    "@types/styled-components": "^5.1.35",
+    "@types/styled-components": "^5.1.26",
     "typescript": "~5.9.2"
   },
   "private": true
