@@ -431,6 +431,16 @@ async def infer_image(file: UploadFile = File(...)):
                 img = Image.open(file_path).convert('RGB')
                 print(f'[INFER] Original image size: {img.size}')
                 
+                # Crop to center square first to avoid distortion
+                # This preserves aspect ratio and focuses on center content
+                width, height = img.size
+                if width != height:
+                    size = min(width, height)
+                    left = (width - size) // 2
+                    top = (height - size) // 2
+                    img = img.crop((left, top, left + size, top + size))
+                    print(f'[INFER] Cropped to square: {img.size}')
+                
                 # Use high-quality resize for better results
                 img = img.resize((w, h), Image.Resampling.LANCZOS)
                 arr = np.array(img).astype(np.float32)
@@ -483,24 +493,37 @@ async def infer_image(file: UploadFile = File(...)):
                         top_confs = np.sort(confidences)[-10:][::-1]
                         print(f'  - Top 10 confidences: {[f"{c:.4f}" for c in top_confs]}')
                         
-                        # IMPROVED THRESHOLDS: Classroom = 0.08-0.19, Riptide = 0.24-0.37
-                        # Lower thresholds to catch more riptides
+                        # REALISTIC THRESHOLDS: Based on model training data
+                        # Use top-k average for stability instead of single max value
                         
+                        # Sort confidences and take average of top 5 for stability
+                        top_k = min(5, len(confidences))
+                        top_confidences = np.sort(confidences)[-top_k:]
+                        avg_top_conf = float(np.mean(top_confidences))
                         max_conf = float(np.max(confidences))
-                        print(f'[INFER] Max confidence: {max_conf:.4f}')
                         
-                        # More aggressive thresholds for riptide detection
-                        if max_conf >= 0.23:
-                            # Definite riptide (23%+) - was 0.27
-                            danger_prob = 0.80
+                        # Use weighted combination: 70% top-k average, 30% max
+                        # This reduces noise while still being responsive to strong detections
+                        stable_conf = 0.7 * avg_top_conf + 0.3 * max_conf
+                        
+                        print(f'[INFER] Max: {max_conf:.4f}, Top-{top_k} avg: {avg_top_conf:.4f}, Stable: {stable_conf:.4f}')
+                        
+                        # Realistic thresholds based on actual riptide characteristics
+                        # HIGH: Strong visual indicators (foam patterns, discoloration, channel)
+                        # MODERATE: Some indicators present but not definitive
+                        # LOW: Calm water, no concerning patterns
+                        
+                        if stable_conf >= 0.28:
+                            # Clear riptide indicators (28%+)
+                            danger_prob = min(0.85, 0.60 + (stable_conf - 0.28) * 2.0)
                             status_label = "🚨 HIGH DANGER"
-                        elif max_conf >= 0.17:
-                            # Likely riptide (17-23%) - was 0.21
-                            danger_prob = 0.55
+                        elif stable_conf >= 0.18:
+                            # Possible riptide indicators (18-28%)
+                            danger_prob = 0.40 + (stable_conf - 0.18) * 2.0
                             status_label = "⚠️ MODERATE"
                         else:
-                            # Safe (<17%)
-                            danger_prob = 0.10
+                            # Safe conditions (<18%)
+                            danger_prob = min(0.35, 0.10 + stable_conf * 1.5)
                             status_label = "✓ SAFE"
                         
                         print(f'[INFER] {status_label} ({danger_prob*100:.1f}%)')
@@ -515,16 +538,17 @@ async def infer_image(file: UploadFile = File(...)):
                 # Convert to percentage
                 confidence = round(danger_prob * 100.0, 2)
                 
-                # Determine status based on danger probability (already set above)
-                if danger_prob >= 0.70:
+                # Determine status based on danger probability
+                # Use consistent thresholds with clear boundaries
+                if danger_prob >= 0.65:
                     status = 'HIGH'
                     risk_level = 'high'
-                elif danger_prob >= 0.40:
+                elif danger_prob >= 0.35:
                     status = 'MODERATE'
                     risk_level = 'moderate'
                 else:
                     status = 'LOW'
-                    risk_level = 'high'
+                    risk_level = 'low'  # FIXED: was incorrectly set to 'high'
                 
                 print(f'[INFER] === FINAL RESULT: {status} ({confidence}%) ===')
                 

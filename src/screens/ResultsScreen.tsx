@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import { Animated, Easing, Share, Platform, ActivityIndicator } from 'react-native';
+import { Animated, Easing, Share, Platform, ActivityIndicator, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer } from 'expo-audio';
@@ -73,6 +73,20 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   
+  // AI Summary state
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [bullets, setBullets] = useState<string[]>([]);
+  
+  // Audio playback state - MUST be declared before any conditional returns!
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const player = useAudioPlayer(audioUrl || '');
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const [playbackPosition, setPlaybackPosition] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const pulse = useRef(new Animated.Value(1)).current;
+  
   // Load from history if detectionId provided
   useEffect(() => {
     const loadFromHistory = async () => {
@@ -121,33 +135,12 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
     saveToDatabase();
   }, [result, detectionId, locationName]);
 
-  // AI Summary state
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [bullets, setBullets] = useState<string[]>([]);
-  
-  // Guard: if no result yet, show loading
-  if (!result) {
-    return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
-  // Audio playback state
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const player = useAudioPlayer(audioUrl || '');
-  const [playbackProgress, setPlaybackProgress] = useState(0);
-  const [playbackPosition, setPlaybackPosition] = useState(0);
-  const [playbackDuration, setPlaybackDuration] = useState(0);
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  // Auto-generate summary on mount
+  // Auto-generate summary on mount (must be before guard)
   useEffect(() => {
-    handleGenerateSummary();
-  }, []);
+    if (result) {
+      handleGenerateSummary();
+    }
+  }, [result?.status]);
 
   // Auto-play when player is ready
   useEffect(() => {
@@ -278,6 +271,16 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   }, []);
 
   const statusVisuals = useMemo(() => {
+    if (!result) {
+      return {
+        color: theme.colors.textSecondary,
+        accent: theme.colors.primary,
+        icon: 'alert-circle',
+        headline: 'Loading',
+        subtext: 'Loading detection...',
+      };
+    }
+    
     const status = result.status;
     let color: string;
     let accent: string;
@@ -307,7 +310,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
       color,
       accent,
     };
-  }, [result.status, theme.colors]);
+  }, [result, theme.colors]);
 
   const handleScanAgain = () => {
     // Clean up audio before navigating
@@ -319,6 +322,8 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   };
 
   const handleShareAlert = async () => {
+    if (!result) return;
+    
     const locationText = locationName || result.location?.name || 'Unknown location';
     try {
       let message = '';
@@ -349,10 +354,12 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   };
 
   const handleGenerateSummary = async () => {
-    if (summaryLoading || summary) return;
+    if (summaryLoading || summary || !result) return;
 
     setSummaryLoading(true);
     try {
+      console.log('[ResultsScreen] Generating summary for', result.status);
+      
       const response = await fetch(`${API_BASE}/summarize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -371,6 +378,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('[ResultsScreen] Summary generated successfully');
         setSummary(data.summary || 'Analysis complete.');
         setBullets(data.bullets || []);
       } else {
@@ -385,6 +393,8 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   };
 
   const handlePlayAdvice = async () => {
+    if (!result) return;
+    
     // Prevent multiple rapid clicks
     if (isPlaying && !audioUrl) {
       console.log('Already loading audio...');
@@ -462,6 +472,16 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
       });
     }
   };
+
+  // Guard: if no result yet, show loading (AFTER all hooks!)
+  if (!result) {
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ color: theme.colors.textSecondary, marginTop: 16 }}>Loading detection...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <Container edges={['top', 'left', 'right']}>
@@ -628,6 +648,16 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
                 style={{ marginRight: 8 }}
               />
               <SecondaryButtonLabel>View History</SecondaryButtonLabel>
+            </SecondaryButton>
+
+            <SecondaryButton onPress={() => navigation.navigate('Home')} activeOpacity={0.85}>
+              <Ionicons
+                name="home"
+                size={18}
+                color={theme.colors.primary}
+                style={{ marginRight: 8 }}
+              />
+              <SecondaryButtonLabel>Home</SecondaryButtonLabel>
             </SecondaryButton>
 
             {(result.status === 'HIGH' || result.status === 'MODERATE' || result.status === 'UNSAFE' || result.status === 'DANGER') && (
