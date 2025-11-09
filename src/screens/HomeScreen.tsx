@@ -183,7 +183,7 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
   ]).start(() => {
     setTimeout(() => {
       navigation.navigate('Camera');
-    }, 1500);
+    }, 1000);
   });
 };
 
@@ -271,14 +271,14 @@ export const HomeScreen = ({ navigation }: HomeScreenProps) => {
         }}
       >
         <StatusBar style="light" />
-        <Title>Welcome to RipTide</Title>
+        <Title>Welcome to TideSense</Title>
         <Description>Your personal wave detection assistant</Description>
         <StartButton 
           onPress={handleStartPress}
           activeOpacity={0.8}
           style = {{zIndex :20}}
         >
-          <ButtonText >Start App</ButtonText>
+          <ButtonText >Start Scanning</ButtonText>
         </StartButton>
       </AnimatedContentWrapper>
     </ScreenContainer>
