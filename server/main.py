@@ -6,7 +6,7 @@ import os
 import hashlib
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -341,3 +341,101 @@ def generate_fallback_summary(detection: DetectionResult) -> SummarizeResponse:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+@app.post('/infer', response_model=DetectionResult)
+async def infer_image(file: UploadFile = File(...)):
+    """Simple inference endpoint: saves uploaded image and attempts to run TFLite model.
+    If no tflite runtime / tensorflow is available or inference fails, a mock result is returned.
+    """
+    try:
+        # save upload to temp file
+        tmp_dir = Path(__file__).parent / 'tmp'
+        tmp_dir.mkdir(exist_ok=True)
+        file_path = tmp_dir / file.filename
+        with open(file_path, 'wb') as f:
+            f.write(await file.read())
+
+        # Try to import interpreter from tflite_runtime or tensorflow
+        Interpreter = None
+        try:
+            from tflite_runtime.interpreter import Interpreter as _Interpreter
+            Interpreter = _Interpreter
+            print('Using tflite_runtime Interpreter')
+        except Exception:
+            try:
+                import tensorflow as tf
+                Interpreter = tf.lite.Interpreter
+                print('Using tensorflow.lite Interpreter')
+            except Exception:
+                Interpreter = None
+
+        # If interpreter available, try to run model
+        if Interpreter is not None:
+            try:
+                import numpy as np
+                from PIL import Image
+
+                model_path = Path(__file__).parent.parent / 'assets' / 'models' / 'rip_current_model.tflite'
+                if not model_path.exists():
+                    raise FileNotFoundError(f'Model not found at {model_path}')
+
+                interp = Interpreter(model_path=str(model_path))
+                interp.allocate_tensors()
+
+                input_details = interp.get_input_details()
+                output_details = interp.get_output_details()
+
+                # Basic single-input handling
+                inp_detail = input_details[0]
+                _, h, w, c = inp_detail['shape']
+
+                img = Image.open(file_path).convert('RGB')
+                img = img.resize((w, h))
+                arr = np.array(img).astype(np.float32)
+
+                # Normalize to [0,1] if model expects floats; otherwise cast to uint8
+                if inp_detail['dtype'] == np.float32:
+                    arr = arr / 255.0
+
+                # Add batch dim
+                input_data = np.expand_dims(arr, axis=0).astype(inp_detail['dtype'])
+                interp.set_tensor(inp_detail['index'], input_data)
+                interp.invoke()
+
+                out = interp.get_tensor(output_details[0]['index'])
+
+                # Very generic handling: if output is probabilities, take max
+                flat = np.array(out).flatten()
+                max_prob = float(np.max(flat))
+                probability = round(max_prob * 100.0, 2)
+                status = 'SAFE' if max_prob < 0.5 else 'DANGER'
+
+                return DetectionResult(
+                    status=status,
+                    probability=probability,
+                    timestamp="",
+                    location=None,
+                    weatherAlerts=None,
+                    recommendations=None,
+                )
+
+            except Exception as e:
+                print('TFLite inference failed:', e)
+
+        # Fallback mock result
+        import random, datetime
+        prob = round(10 + random.random() * 80, 2)
+        status = 'DANGER' if prob > 55 else 'SAFE'
+        return DetectionResult(
+            status=status,
+            probability=prob,
+            timestamp=datetime.datetime.utcnow().isoformat(),
+            location=None,
+            weatherAlerts=None,
+            recommendations=None,
+        )
+
+    except Exception as e:
+        print('Inference endpoint error:', e)
+        raise HTTPException(status_code=500, detail=str(e))

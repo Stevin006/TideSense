@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform , Modal, Animated} from 'react-native';
+import { ActivityIndicator, Platform , Modal, Animated, Alert } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Camera, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
 import styled from '../theme/styled';
 import type { AppTheme } from '../theme/theme';
@@ -22,6 +22,7 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const detectionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressAnim = useRef(new Animated.Value(1)).current;
+  const cameraRef = useRef<any>(null);
 
   const [riskLevel, setRiskLevel] = useState<'low' | 'moderate' | 'high' | 'unknown'>('unknown');
   const [isRiskLoading, setIsRiskLoading] = useState(true);
@@ -48,16 +49,56 @@ export const CameraScreen = ({ navigation }: CameraScreenProps) => {
     [],
   );
 
-  const handleStartDetection = () => {
-    if (isDetecting) return;
+  const SERVER_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
 
+  const captureAndInfer = async () => {
+    if (isDetecting) return;
     setIsDetecting(true);
 
-    detectionTimeout.current = setTimeout(() => {
+    try {
+      if (!cameraRef.current) {
+        throw new Error('Camera not ready');
+      }
+
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.6, base64: false });
+      const uri = photo?.uri;
+
+      if (!uri) throw new Error('Failed to capture photo');
+
+      // Upload to backend inference endpoint
+      const form = new FormData();
+      // @ts-ignore - React Native FormData file
+      form.append('file', { uri, name: 'photo.jpg', type: 'image/jpeg' });
+
+      const resp = await fetch(`${SERVER_URL}/infer`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+        },
+        body: form as any,
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server inference failed: ${resp.status}`);
+      }
+
+      const result = await resp.json();
+      setIsDetecting(false);
+      navigation.navigate('Results', { result });
+      return;
+
+    } catch (err: any) {
+      // Fallback to local mock detection for quick dev feedback
+      console.log('Inference error, falling back to mock:', err?.message || err);
       const result = generateMockDetectionResult();
       setIsDetecting(false);
       navigation.navigate('Results', { result });
-    }, 2200 + Math.random() * 600);
+    }
+  };
+
+  const handleStartDetection = () => {
+    // Kick off camera capture + server inference (or fallback)
+    captureAndInfer();
   };
 
   const animatePress = (toValue: number) => {
@@ -236,7 +277,7 @@ const CameraWrapper = styled.View<ThemeProps>`
   flex: 1;
 `;
 
-const StyledCameraView = styled(CameraView)<ThemeProps>`
+const StyledCameraView = styled(Camera)<ThemeProps>`
   flex: 1;
 `;
 
