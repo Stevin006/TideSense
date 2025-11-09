@@ -11,6 +11,8 @@ import * as Location from 'expo-location';
 
 import type { RootStackParamList } from '../navigation/types';
 import type { DetectionStatus } from '../types/detection';
+import { saveDetection, getDetectionById } from '../utils/database';
+import { EmergencyActionsPanel } from '../components/EmergencyActionsPanel';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -52,13 +54,17 @@ const STATUS_CONTENT: Record<
   },
 };
 
-// Backend API URL - use your Mac's local IP for physical devices/Expo Go
-const API_BASE = Platform.OS === 'android' && !__DEV__ 
+// Backend API URL
+// For Android emulator use 10.0.2.2, for iOS simulator/device use your local network IP
+const API_BASE = Platform.OS === 'android' 
   ? 'http://10.0.2.2:8000' 
-  : 'http://10.14.31.26:8000';
+  : __DEV__ 
+    ? 'http://10.14.31.26:8000'  // Your local network IP for real devices
+    : 'http://127.0.0.1:8000';       // Fallback for production
 
 export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
-  const { result } = route.params;
+  const { result: routeResult, detectionId } = route.params;
+  const [result, setResult] = useState(routeResult);
   const theme = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -66,11 +72,68 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   const [locationName, setLocationName] = useState<string | null>(null);
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  
+  // Load from history if detectionId provided
+  useEffect(() => {
+    const loadFromHistory = async () => {
+      if (detectionId && !routeResult) {
+        const record = await getDetectionById(detectionId);
+        if (record) {
+          setResult({
+            status: record.riskLevel as DetectionStatus,
+            probability: record.confidence,
+            timestamp: record.timestamp,
+            location: record.latitude && record.longitude 
+              ? { name: `${record.latitude.toFixed(4)}, ${record.longitude.toFixed(4)}`, latitude: record.latitude, longitude: record.longitude }
+              : undefined,
+            recommendations: [],
+          });
+          if (record.latitude && record.longitude) {
+            setCoords({ latitude: record.latitude, longitude: record.longitude });
+          }
+        }
+      }
+    };
+    loadFromHistory();
+  }, [detectionId, routeResult]);
+  
+  // Save to database on mount (if from camera, not from history)
+  useEffect(() => {
+    const saveToDatabase = async () => {
+      if (result && !detectionId) {
+        try {
+          const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          await saveDetection({
+            timestamp: result.timestamp,
+            riskLevel: result.status,
+            confidence: result.probability,
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            noaaRisk: locationName,
+            imageBase64: null, // We could save base64 here if needed
+          });
+          console.log('[ResultsScreen] Saved detection to database');
+        } catch (err) {
+          console.warn('[ResultsScreen] Failed to save detection:', err);
+        }
+      }
+    };
+    saveToDatabase();
+  }, [result, detectionId, locationName]);
 
   // AI Summary state
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [bullets, setBullets] = useState<string[]>([]);
+  
+  // Guard: if no result yet, show loading
+  if (!result) {
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   // Audio playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -482,6 +545,13 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
           </InfoCard>
         )}
 
+        {/* Emergency Actions Panel */}
+        <EmergencyActionsPanel 
+          riskLevel={result.status} 
+          latitude={coords?.latitude}
+          longitude={coords?.longitude}
+        />
+
         {/* Water Conditions */}
         <InfoCard>
           <CardTitle>Water Conditions</CardTitle>
@@ -539,6 +609,26 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
                 {isPlaying ? 'Pause' : 'Play Audio'}
               </SecondaryButtonLabel>
             </AnimatedPlayButton>
+
+            <SecondaryButton onPress={() => navigation.navigate('Chat', { detection: result })} activeOpacity={0.85}>
+              <Ionicons
+                name="chatbubbles"
+                size={18}
+                color={theme.colors.primary}
+                style={{ marginRight: 8 }}
+              />
+              <SecondaryButtonLabel>Ask AI</SecondaryButtonLabel>
+            </SecondaryButton>
+
+            <SecondaryButton onPress={() => navigation.navigate('History')} activeOpacity={0.85}>
+              <Ionicons
+                name="time"
+                size={18}
+                color={theme.colors.primary}
+                style={{ marginRight: 8 }}
+              />
+              <SecondaryButtonLabel>View History</SecondaryButtonLabel>
+            </SecondaryButton>
 
             {(result.status === 'HIGH' || result.status === 'MODERATE' || result.status === 'UNSAFE' || result.status === 'DANGER') && (
               <SecondaryButton onPress={handleShareAlert} activeOpacity={0.85}>
