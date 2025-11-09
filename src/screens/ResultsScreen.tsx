@@ -36,7 +36,7 @@ const STATUS_CONTENT: Record<
 const API_BASE = Platform.OS === 'android' 
   ? 'http://10.0.2.2:8000' 
   : __DEV__ 
-    ? 'http://192.168.1.102:8000'  // Your local network IP for real devices
+    ? 'http://10.14.31.26:8000'  // Your local network IP for real devices
     : 'http://127.0.0.1:8000';       // Fallback for production
 
 export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
@@ -67,6 +67,27 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   useEffect(() => {
     handleGenerateSummary();
   }, []);
+
+  // Auto-play when player is ready
+  useEffect(() => {
+    if (player && audioUrl && !player.playing && player.duration === 0) {
+      // Player just loaded, try to play
+      const attemptPlay = async () => {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (player && audioUrl) {
+            player.play();
+            setIsPlaying(true);
+            console.log('Auto-play started');
+          }
+        } catch (err) {
+          console.error('Auto-play failed:', err);
+          setIsPlaying(false);
+        }
+      };
+      attemptPlay();
+    }
+  }, [player, audioUrl]);
 
   // Monitor audio playback
   useEffect(() => {
@@ -245,22 +266,30 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
   };
 
   const handlePlayAdvice = async () => {
+    // Prevent multiple rapid clicks
+    if (isPlaying && !audioUrl) {
+      console.log('Already loading audio...');
+      return;
+    }
+
     // Build text to speak
     const textToSpeak = summary
       ? `${summary} ${bullets.join('. ')}`
       : result.recommendations.join('. ') || `${result.status}. Confidence: ${result.probability}%`;
 
     try {
-      // If audio is playing, toggle pause
+      // If audio exists and player is ready, toggle pause
       if (audioUrl && player) {
         if (player.playing) {
           player.pause();
           setIsPlaying(false);
+          return;
         } else {
+          // Resume playback
           player.play();
           setIsPlaying(true);
+          return;
         }
-        return;
       }
 
       setIsPlaying(true);
@@ -273,12 +302,13 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
       });
 
       if (!response.ok) {
+        console.warn('TTS request failed:', response.status);
+        setIsPlaying(false);
         // Fallback to device TTS
         Speech.speak(textToSpeak, {
           onDone: () => setIsPlaying(false),
           onStopped: () => setIsPlaying(false),
         });
-        setIsPlaying(false);
         return;
       }
 
@@ -288,25 +318,23 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
           ? data.tts_url
           : `${API_BASE}${data.tts_url}`;
 
-        // Set audio URL to trigger player
+        console.log('Setting audio URL:', ttsUrl);
+        
+        // Set audio URL - the useEffect will handle auto-playing
         setAudioUrl(ttsUrl);
-        setTimeout(() => {
-          if (player) {
-            player.play();
-            setIsPlaying(true);
-          }
-        }, 100);
       } else {
+        console.warn('No tts_url in response');
+        setIsPlaying(false);
         // Fallback to device TTS
         Speech.speak(textToSpeak, {
           onDone: () => setIsPlaying(false),
           onStopped: () => setIsPlaying(false),
         });
-        setIsPlaying(false);
       }
     } catch (err) {
-      console.warn('Audio playback error:', err);
-      // Final fallback
+      console.error('Audio playback error:', err);
+      setIsPlaying(false);
+      // Final fallback to device TTS
       Speech.speak(textToSpeak, {
         onDone: () => setIsPlaying(false),
         onStopped: () => setIsPlaying(false),
@@ -439,7 +467,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
             {/* Play Audio Button with Pulse */}
             <AnimatedPlayButton
               onPress={handlePlayAdvice}
-              disabled={isPlaying || summaryLoading}
+              disabled={summaryLoading}
               style={{ transform: [{ scale: pulse }] }}
               activeOpacity={0.85}
             >
@@ -450,7 +478,7 @@ export const ResultsScreen = ({ navigation, route }: ResultsScreenProps) => {
                 style={{ marginRight: 8 }}
               />
               <SecondaryButtonLabel>
-                {isPlaying ? 'Playing...' : 'Play Audio'}
+                {isPlaying ? 'Pause' : 'Play Audio'}
               </SecondaryButtonLabel>
             </AnimatedPlayButton>
 
