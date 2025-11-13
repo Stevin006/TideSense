@@ -12,6 +12,6 @@ Learn more about the project in our Devpost below.
 
 **SharkByte Devpost:** <https://devpost.com/software/riptide-wip>
 
-Development process, structuring, and technologie below!
+Development process, structuring, and technologies below!
 
 ![Development Workflow](assets/TideSenseDevelopmentWorkflow.png)
